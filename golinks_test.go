@@ -120,6 +120,24 @@ func TestAdminPageShowsMissingBanner(t *testing.T) {
 	}
 }
 
+func TestAdminPageNumberingAndRowLayout(t *testing.T) {
+	s := testServer(t, map[string]string{"aaa": "https://a.example.com", "bbb": "https://b.example.com"})
+	rec := doReq(s, "GET", "/", nil)
+	body := rec.Body.String()
+	for _, want := range []string{`<td class="num">1</td>`, `<td class="num">2</td>`, `class="target-row"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("admin page missing %q", want)
+		}
+	}
+	// In each row the controls must appear in Save, Delete, Open order.
+	saveIdx := strings.Index(body, ">Save<")
+	delIdx := strings.Index(body, ">Delete<")
+	openIdx := strings.Index(body, ">Open<")
+	if !(saveIdx >= 0 && delIdx > saveIdx && openIdx > delIdx) {
+		t.Errorf("row controls out of order: save=%d delete=%d open=%d", saveIdx, delIdx, openIdx)
+	}
+}
+
 func TestInvalidSaveRejected(t *testing.T) {
 	s := testServer(t, nil)
 	rec := doReq(s, "POST", "/_admin/links", url.Values{"key": {"bad key!"}, "target": {"https://x.example.com"}})

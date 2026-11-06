@@ -70,8 +70,15 @@ func (s *server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?missing="+url.QueryEscape(key), http.StatusFound)
 }
 
+// adminLink is a Link plus its 1-based row number for the admin table.
+type adminLink struct {
+	Num    int
+	Key    string
+	Target string
+}
+
 type adminData struct {
-	Links   []Link
+	Links   []adminLink
 	Missing string
 	Error   string
 	Saved   string
@@ -90,11 +97,16 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
   .missing { background: #fff4d6; border: 1px solid #e5c15c; }
   .error { background: #fde3e3; border: 1px solid #e58c8c; }
   .saved { background: #e2f5e3; border: 1px solid #8cc492; }
-  form.inline { display: inline; }
   table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
   th, td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid #e3e3e6; vertical-align: middle; }
+  td.num, th.num { width: 2.2rem; color: #888; }
+  td.key { font-family: ui-monospace, monospace; white-space: nowrap; }
   input[type=text], input[type=url] { width: 100%; box-sizing: border-box; padding: .4rem .5rem; border: 1px solid #c9c9ce; border-radius: 6px; }
-  td.key input { font-family: ui-monospace, monospace; }
+  .target-row { display: flex; gap: .5rem; align-items: center; }
+  .target-row form.save { flex: 1; display: flex; gap: .5rem; align-items: center; margin: 0; }
+  .target-row form.del { margin: 0; }
+  .target-row button { white-space: nowrap; }
+  a.btn { display: inline-block; padding: .4rem .8rem; border: 1px solid #c9c9ce; background: #f5f5f7; border-radius: 6px; color: #1c1c1e; text-decoration: none; white-space: nowrap; }
   button { padding: .4rem .8rem; border: 1px solid #c9c9ce; background: #f5f5f7; border-radius: 6px; cursor: pointer; }
   button.primary { background: #0a64ff; border-color: #0a64ff; color: #fff; }
   button.danger { color: #b00020; }
@@ -128,22 +140,25 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 <p class="hint">{{len .Links}} link(s). Editing a target and saving takes effect immediately.</p>
 
 <table id="links">
-  <tr><th style="width:180px">Key</th><th>Target</th><th style="width:170px"></th></tr>
+  <tr><th class="num">#</th><th style="width:160px">Key</th><th>Target</th></tr>
   {{range .Links}}
   <tr class="link-row">
-    <td class="key"><code>{{.Key}}</code></td>
+    <td class="num">{{.Num}}</td>
+    <td class="key">{{.Key}}</td>
     <td>
-      <form class="inline" method="post" action="/_admin/links">
-        <input type="hidden" name="key" value="{{.Key}}">
-        <input type="url" name="target" value="{{.Target}}" style="width:78%">
-        <button type="submit">Save</button>
-      </form>
-      <form class="inline" method="post" action="/_admin/delete" onsubmit="return confirm('Delete go/{{.Key}}?')">
-        <input type="hidden" name="key" value="{{.Key}}">
-        <button class="danger" type="submit">Delete</button>
-      </form>
+      <div class="target-row">
+        <form class="save" method="post" action="/_admin/links">
+          <input type="hidden" name="key" value="{{.Key}}">
+          <input type="url" name="target" value="{{.Target}}">
+          <button type="submit">Save</button>
+        </form>
+        <form class="del" method="post" action="/_admin/delete" onsubmit="return confirm('Delete go/{{.Key}}?')">
+          <input type="hidden" name="key" value="{{.Key}}">
+          <button class="danger" type="submit">Delete</button>
+        </form>
+        <a class="btn" href="/{{.Key}}">Open</a>
+      </div>
     </td>
-    <td><a href="/{{.Key}}">open</a></td>
   </tr>
   {{end}}
 </table>
@@ -166,8 +181,13 @@ func (s *server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	all := s.store.All()
+	links := make([]adminLink, 0, len(all))
+	for i, l := range all {
+		links = append(links, adminLink{Num: i + 1, Key: l.Key, Target: l.Target})
+	}
 	data := adminData{
-		Links:   s.store.All(),
+		Links:   links,
 		Missing: q.Get("missing"),
 		Error:   q.Get("error"),
 		Saved:   q.Get("saved"),
