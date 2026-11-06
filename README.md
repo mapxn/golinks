@@ -7,7 +7,8 @@ many companies (`go/docs`, `go/gh`, …), rebuilt for one person and one Mac.
 
 Type `go/gh` in your browser's address bar, get redirected to
 `https://github.com`. Type `go/` to open a small admin page where you manage
-the mappings. No cloud, no account, no database server: one static Go
+the mappings; each mapping can carry an optional note saying what it is for.
+No cloud, no account, no database server: one static Go
 binary, one JSON file, one `launchd` daemon.
 
 ## How it works

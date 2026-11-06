@@ -13,9 +13,17 @@ import (
 )
 
 // Link is one short-link mapping, e.g. gh -> https://github.com.
+// Note is an optional free-text description of what the link is for.
 type Link struct {
 	Key    string `json:"key"`
 	Target string `json:"target"`
+	Note   string `json:"note,omitempty"`
+}
+
+// entry is the persisted form of a Link (the key lives in the map).
+type entry struct {
+	Target string `json:"target"`
+	Note   string `json:"note,omitempty"`
 }
 
 // Store persists link mappings as a single JSON file. Writes are atomic
@@ -24,15 +32,21 @@ type Link struct {
 type Store struct {
 	mu    sync.RWMutex
 	path  string
-	links map[string]string
+	links map[string]entry
 }
 
 type storeFile struct {
+	Links map[string]entry `json:"links"`
+}
+
+// legacyStoreFile is the v1 on-disk format (key -> target string). Existing
+// installs have data files in this shape, so loading must accept both.
+type legacyStoreFile struct {
 	Links map[string]string `json:"links"`
 }
 
 func loadStore(path string) (*Store, error) {
-	s := &Store{path: path, links: map[string]string{}}
+	s := &Store{path: path, links: map[string]entry{}}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return s, nil
@@ -41,11 +55,20 @@ func loadStore(path string) (*Store, error) {
 		return nil, err
 	}
 	var f storeFile
-	if err := json.Unmarshal(data, &f); err != nil {
+	if err := json.Unmarshal(data, &f); err == nil {
+		if f.Links != nil {
+			s.links = f.Links
+		}
+		return s, nil
+	}
+	// Fall back to the legacy format and upgrade in memory; the next save
+	// rewrites the file in the current format.
+	var legacy legacyStoreFile
+	if err := json.Unmarshal(data, &legacy); err != nil {
 		return nil, fmt.Errorf("parse data file %s: %w", path, err)
 	}
-	if f.Links != nil {
-		s.links = f.Links
+	for k, v := range legacy.Links {
+		s.links[k] = entry{Target: v}
 	}
 	return s, nil
 }
@@ -76,11 +99,14 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmpName, s.path)
 }
 
-func (s *Store) Get(key string) (string, bool) {
+func (s *Store) Get(key string) (Link, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	t, ok := s.links[key]
-	return t, ok
+	e, ok := s.links[key]
+	if !ok {
+		return Link{}, false
+	}
+	return Link{Key: key, Target: e.Target, Note: e.Note}, true
 }
 
 // All returns every mapping sorted by key.
@@ -89,13 +115,13 @@ func (s *Store) All() []Link {
 	defer s.mu.RUnlock()
 	out := make([]Link, 0, len(s.links))
 	for k, v := range s.links {
-		out = append(out, Link{Key: k, Target: v})
+		out = append(out, Link{Key: k, Target: v.Target, Note: v.Note})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
 }
 
-func (s *Store) Set(key, target string) error {
+func (s *Store) Set(key, target, note string) error {
 	key, err := NormalizeKey(key)
 	if err != nil {
 		return err
@@ -103,9 +129,13 @@ func (s *Store) Set(key, target string) error {
 	if err := ValidateTarget(target); err != nil {
 		return err
 	}
+	note = strings.TrimSpace(note)
+	if len(note) > 500 {
+		return fmt.Errorf("note is too long (max 500 characters)")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.links[key] = target
+	s.links[key] = entry{Target: target, Note: note}
 	return s.saveLocked()
 }
 

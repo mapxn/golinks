@@ -18,7 +18,7 @@ func testServer(t *testing.T, seed map[string]string) *server {
 		t.Fatal(err)
 	}
 	for k, v := range seed {
-		if err := st.Set(k, v); err != nil {
+		if err := st.Set(k, v, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -157,18 +157,77 @@ func TestStorePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Set("gh", "https://github.com"); err != nil {
+	if err := st.Set("gh", "https://github.com", "code hosting"); err != nil {
 		t.Fatal(err)
 	}
 	st2, err := loadStore(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := st2.Get("gh"); !ok || v != "https://github.com" {
-		t.Fatalf("reloaded store lost data: %q %v", v, ok)
+	if link, ok := st2.Get("gh"); !ok || link.Target != "https://github.com" || link.Note != "code hosting" {
+		t.Fatalf("reloaded store lost data: %+v %v", link, ok)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLegacyDataFileStillLoads(t *testing.T) {
+	// v1 format: {"links": {"old": "https://..."}} must keep working so an
+	// upgrade never loses an existing install's mappings.
+	path := filepath.Join(t.TempDir(), "links.json")
+	if err := os.WriteFile(path, []byte(`{"links":{"old":"https://old.example.com"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := loadStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, ok := st.Get("old")
+	if !ok || link.Target != "https://old.example.com" || link.Note != "" {
+		t.Fatalf("legacy entry = %+v, %v", link, ok)
+	}
+	// Saving upgrades the file to the current format.
+	if err := st.Set("new", "https://new.example.com", ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"target"`) {
+		t.Fatalf("file not upgraded to current format: %s", data)
+	}
+}
+
+func TestNoteIsOptionalAndShown(t *testing.T) {
+	s := testServer(t, nil)
+	doReq(s, "POST", "/_admin/links", url.Values{"key": {"gm"}, "target": {"https://mail.google.com"}, "note": {"邮箱"}})
+	rec := doReq(s, "GET", "/", nil)
+	if !strings.Contains(rec.Body.String(), "邮箱") {
+		t.Fatal("note not shown on admin page")
+	}
+	// A mapping without a note works fine too.
+	rec = doReq(s, "POST", "/_admin/links", url.Values{"key": {"nn"}, "target": {"https://n.example.com"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create without note: status = %d", rec.Code)
+	}
+}
+
+func TestFaviconServed(t *testing.T) {
+	s := testServer(t, nil)
+	for _, p := range []string{"/favicon.svg", "/favicon.ico"} {
+		rec := doReq(s, "GET", p, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d", p, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "image/svg+xml") {
+			t.Fatalf("GET %s: Content-Type = %q", p, ct)
+		}
+		if !strings.Contains(rec.Body.String(), "<svg") {
+			t.Fatalf("GET %s: body is not an SVG", p)
+		}
+	}
+	rec := doReq(s, "GET", "/", nil)
+	if !strings.Contains(rec.Body.String(), `rel="icon"`) {
+		t.Fatal("admin page does not reference the favicon")
 	}
 }
 

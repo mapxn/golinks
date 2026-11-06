@@ -14,6 +14,11 @@ type server struct {
 	cfg   Config
 }
 
+// faviconSVG is the site's icon: a blue rounded square with "go" in white.
+// Served at /favicon.svg and /favicon.ico and referenced from the admin
+// page's <link rel="icon">.
+const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0a64ff"/><text x="32" y="44" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="bold" fill="#ffffff" text-anchor="middle">go</text></svg>`
+
 // ServeHTTP routes:
 //
 //	GET  /                  admin page (list / create / edit / delete)
@@ -27,6 +32,10 @@ type server struct {
 // /gh/extra does NOT redirect to <target of gh>/extra.
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == "/favicon.svg" || r.URL.Path == "/favicon.ico":
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		fmt.Fprint(w, faviconSVG)
 	case r.URL.Path == "/":
 		s.handleAdmin(w, r)
 	case r.URL.Path == "/_admin/links":
@@ -61,10 +70,10 @@ func (s *server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?missing="+url.QueryEscape(strings.ToLower(first)), http.StatusFound)
 		return
 	}
-	if target, ok := s.store.Get(key); ok {
+	if link, ok := s.store.Get(key); ok {
 		// 302, never 301: a 301 would be cached hard by browsers and a
 		// later edit of the mapping would silently stop taking effect.
-		http.Redirect(w, r, target, http.StatusFound)
+		http.Redirect(w, r, link.Target, http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, "/?missing="+url.QueryEscape(key), http.StatusFound)
@@ -75,6 +84,7 @@ type adminLink struct {
 	Num    int
 	Key    string
 	Target string
+	Note   string
 }
 
 type adminData struct {
@@ -89,9 +99,10 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>go links</title>
 <style>
-  body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem auto; max-width: 880px; padding: 0 1rem; color: #1c1c1e; }
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem auto; max-width: 1080px; padding: 0 1rem; color: #1c1c1e; }
   h1 { font-size: 1.4rem; }
   .banner { border-radius: 8px; padding: .7rem 1rem; margin: 1rem 0; }
   .missing { background: #fff4d6; border: 1px solid #e5c15c; }
@@ -104,6 +115,8 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
   input[type=text], input[type=url] { width: 100%; box-sizing: border-box; padding: .4rem .5rem; border: 1px solid #c9c9ce; border-radius: 6px; }
   .target-row { display: flex; gap: .5rem; align-items: center; }
   .target-row form.save { flex: 1; display: flex; gap: .5rem; align-items: center; margin: 0; }
+  .target-row form.save input[name=target] { flex: 2; }
+  .target-row form.save input[name=note] { flex: 1; }
   .target-row form.del { margin: 0; }
   .target-row button { white-space: nowrap; }
   a.btn { display: inline-block; padding: .4rem .8rem; border: 1px solid #c9c9ce; background: #f5f5f7; border-radius: 6px; color: #1c1c1e; text-decoration: none; white-space: nowrap; }
@@ -130,8 +143,9 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 
 <form method="post" action="/_admin/links">
   <div class="row">
-    <div style="flex:0 0 180px"><label for="key">Key (go/…)</label><input type="text" id="key" name="key" value="{{.Missing}}" placeholder="gh" required></div>
-    <div><label for="target">Target URL</label><input type="url" id="target" name="target" placeholder="https://example.com" required></div>
+    <div style="flex:0 0 150px"><label for="key">Key (go/…)</label><input type="text" id="key" name="key" value="{{.Missing}}" placeholder="gh" required></div>
+    <div style="flex:2"><label for="target">Target URL</label><input type="url" id="target" name="target" placeholder="https://example.com" required></div>
+    <div style="flex:1"><label for="note">Note (optional)</label><input type="text" id="note" name="note" placeholder="What is this link for?"></div>
     <div style="flex:0 0 auto"><button class="primary" type="submit">Save</button></div>
   </div>
 </form>
@@ -140,7 +154,7 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 <p class="hint">{{len .Links}} link(s). Editing a target and saving takes effect immediately.</p>
 
 <table id="links">
-  <tr><th class="num">#</th><th style="width:160px">Key</th><th>Target</th></tr>
+  <tr><th class="num">#</th><th style="width:160px">Key</th><th>Target · Note (optional)</th></tr>
   {{range .Links}}
   <tr class="link-row">
     <td class="num">{{.Num}}</td>
@@ -150,6 +164,7 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
         <form class="save" method="post" action="/_admin/links">
           <input type="hidden" name="key" value="{{.Key}}">
           <input type="url" name="target" value="{{.Target}}">
+          <input type="text" name="note" value="{{.Note}}" placeholder="note (optional)">
           <button type="submit">Save</button>
         </form>
         <form class="del" method="post" action="/_admin/delete" onsubmit="return confirm('Delete go/{{.Key}}?')">
@@ -184,7 +199,7 @@ func (s *server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	all := s.store.All()
 	links := make([]adminLink, 0, len(all))
 	for i, l := range all {
-		links = append(links, adminLink{Num: i + 1, Key: l.Key, Target: l.Target})
+		links = append(links, adminLink{Num: i + 1, Key: l.Key, Target: l.Target, Note: l.Note})
 	}
 	data := adminData{
 		Links:   links,
@@ -214,7 +229,8 @@ func (s *server) handleSave(w http.ResponseWriter, r *http.Request) {
 	}
 	key := r.FormValue("key")
 	target := strings.TrimSpace(r.FormValue("target"))
-	if err := s.store.Set(key, target); err != nil {
+	note := r.FormValue("note")
+	if err := s.store.Set(key, target, note); err != nil {
 		redirectWithError(w, r, err.Error())
 		return
 	}
