@@ -1,0 +1,1 @@
+{"cert_file":"/usr/local/etc/golinks/certs/go.pem","data_file":"/usr/local/var/golinks/links.json","http_enabled":true,"http_port":80,"https_enabled":false,"https_port":443,"key_file":"/usr/local/etc/golinks/certs/go-key.pem"}

@@ -1,0 +1,11 @@
+# Build outputs
+/golinks
+/dist/
+
+# Local runtime data and config — never commit real mappings or keys
+links.json
+config.json
+*.pem
+*.key
+
+.DS_Store
