@@ -1,6 +1,7 @@
 # Build outputs
 /golinks
 /dist/
+/release/
 
 # Local runtime data and config — never commit real mappings or keys
 links.json

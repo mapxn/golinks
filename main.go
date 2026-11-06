@@ -99,9 +99,18 @@ func run(cfg Config) error {
 	return <-fatal
 }
 
+// version is stamped at build time via -ldflags "-X main.version=..."
+// (see the Makefile's dist target). Source builds report "dev".
+var version = "dev"
+
 func main() {
 	configPath := flag.String("config", "config.json", "path to config file")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("golinks " + version)
+		return
+	}
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
