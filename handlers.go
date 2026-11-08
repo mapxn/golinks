@@ -104,7 +104,11 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 <style>
   body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem auto; max-width: 1080px; padding: 0 1rem; color: #1c1c1e; }
   h1 { font-size: 1.4rem; }
-  .banner { border-radius: 8px; padding: .7rem 1rem; margin: 1rem 0; }
+  #toasts { position: fixed; top: 1rem; right: 1rem; z-index: 50; display: flex; flex-direction: column; gap: .5rem; max-width: min(420px, calc(100vw - 2rem)); }
+  .toast { position: relative; border-radius: 8px; padding: .7rem 2.2rem .7rem 1rem; box-shadow: 0 4px 16px rgba(0,0,0,.12); transition: opacity .3s; }
+  .toast.hide { opacity: 0; }
+  .toast .close { position: absolute; top: .3rem; right: .45rem; padding: .1rem .35rem; background: none; border: none; font-size: 1.05rem; line-height: 1; color: inherit; opacity: .55; cursor: pointer; }
+  .toast .close:hover { opacity: 1; }
   .missing { background: #fff4d6; border: 1px solid #e5c15c; }
   .error { background: #fde3e3; border: 1px solid #e58c8c; }
   .saved { background: #e2f5e3; border: 1px solid #8cc492; }
@@ -131,15 +135,17 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 </head>
 <body>
 <h1>go/ links</h1>
+<div id="toasts">
 {{if .Missing}}
-<div class="banner missing"><strong>go/{{.Missing}}</strong> does not exist yet. Create it below — the key is already filled in.</div>
+<div class="toast missing"><strong>go/{{.Missing}}</strong> does not exist yet. Create it below — the key is already filled in.<button type="button" class="close" aria-label="Close">&times;</button></div>
 {{end}}
 {{if .Error}}
-<div class="banner error">{{.Error}}</div>
+<div class="toast error">{{.Error}}<button type="button" class="close" aria-label="Close">&times;</button></div>
 {{end}}
 {{if .Saved}}
-<div class="banner saved">Saved <strong>go/{{.Saved}}</strong>.</div>
+<div class="toast saved">Saved <strong>go/{{.Saved}}</strong>.<button type="button" class="close" aria-label="Close">&times;</button></div>
 {{end}}
+</div>
 
 <form method="post" action="/_admin/links">
   <div class="row">
@@ -179,6 +185,17 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 </table>
 
 <script>
+  function dismissToast(t) {
+    t.classList.add('hide');
+    setTimeout(function () { t.remove(); }, 300);
+  }
+  document.querySelectorAll('.toast .close').forEach(function (btn) {
+    btn.addEventListener('click', function () { dismissToast(btn.parentElement); });
+  });
+  var savedToast = document.querySelector('.toast.saved');
+  if (savedToast) {
+    setTimeout(function () { dismissToast(savedToast); }, 3000);
+  }
   var f = document.getElementById('filter');
   f.addEventListener('input', function () {
     var q = f.value.toLowerCase();

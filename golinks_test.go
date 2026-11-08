@@ -120,6 +120,23 @@ func TestAdminPageShowsMissingBanner(t *testing.T) {
 	}
 }
 
+func TestAdminSavedToastIsFloatingAndAutoDismisses(t *testing.T) {
+	s := testServer(t, nil)
+	rec := doReq(s, "GET", "/?saved=gh", nil)
+	body := rec.Body.String()
+	for _, want := range []string{
+		`id="toasts"`,         // fixed overlay container: no layout shift
+		`class="toast saved"`, // the saved notice is a toast now
+		`class="close"`,       // manual close button
+		`position: fixed`,     // overlay positioning in CSS
+		`}, 3000);`,           // success toast auto-dismisses after 3s
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("admin page missing %q", want)
+		}
+	}
+}
+
 func TestAdminPageNumberingAndRowLayout(t *testing.T) {
 	s := testServer(t, map[string]string{"aaa": "https://a.example.com", "bbb": "https://b.example.com"})
 	rec := doReq(s, "GET", "/", nil)
