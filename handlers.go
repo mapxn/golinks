@@ -104,7 +104,7 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 <style>
   body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem auto; max-width: 1080px; padding: 0 1rem; color: #1c1c1e; }
   h1 { font-size: 1.4rem; }
-  #toasts { position: fixed; top: 1rem; right: 1rem; z-index: 50; display: flex; flex-direction: column; gap: .5rem; max-width: min(420px, calc(100vw - 2rem)); }
+  #toasts { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; gap: .5rem; width: max-content; max-width: min(420px, calc(100vw - 2rem)); }
   .toast { position: relative; border-radius: 8px; padding: .7rem 2.2rem .7rem 1rem; box-shadow: 0 4px 16px rgba(0,0,0,.12); transition: opacity .3s; }
   .toast.hide { opacity: 0; }
   .toast .close { position: absolute; top: .3rem; right: .45rem; padding: .1rem .35rem; background: none; border: none; font-size: 1.05rem; line-height: 1; color: inherit; opacity: .55; cursor: pointer; }
@@ -117,12 +117,12 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
   td.num, th.num { width: 2.2rem; color: #888; }
   td.key { font-family: ui-monospace, monospace; white-space: nowrap; }
   input[type=text], input[type=url] { width: 100%; box-sizing: border-box; padding: .4rem .5rem; border: 1px solid #c9c9ce; border-radius: 6px; }
-  .target-row { display: flex; gap: .5rem; align-items: center; }
-  .target-row form.save { flex: 1; display: flex; gap: .5rem; align-items: center; margin: 0; }
-  .target-row form.save input[name=target] { flex: 2; }
-  .target-row form.save input[name=note] { flex: 1; }
-  .target-row form.del { margin: 0; }
-  .target-row button { white-space: nowrap; }
+  col.c-key { width: 150px; }
+  col.c-note { width: 27%; }
+  col.c-actions { width: 15.4rem; }
+  td.actions { white-space: nowrap; }
+  td.actions > * { margin-right: .5rem; }
+  td.actions > *:last-child { margin-right: 0; }
   a.btn { display: inline-block; padding: .4rem .8rem; border: 1px solid #c9c9ce; background: #f5f5f7; border-radius: 6px; color: #1c1c1e; text-decoration: none; white-space: nowrap; }
   button { padding: .4rem .8rem; border: 1px solid #c9c9ce; background: #f5f5f7; border-radius: 6px; cursor: pointer; }
   button.primary { background: #0a64ff; border-color: #0a64ff; color: #fff; }
@@ -160,25 +160,20 @@ var adminTmpl = template.Must(template.New("admin").Parse(`<!DOCTYPE html>
 <p class="hint">{{len .Links}} link(s). Editing a target and saving takes effect immediately.</p>
 
 <table id="links">
-  <tr><th class="num">#</th><th style="width:160px">Key</th><th>Target · Note (optional)</th></tr>
+  <colgroup><col class="c-num"><col class="c-key"><col class="c-target"><col class="c-note"><col class="c-actions"></colgroup>
+  <tr><th class="num">#</th><th>Key</th><th>Target</th><th>Note (optional)</th><th></th></tr>
   {{range .Links}}
   <tr class="link-row">
     <td class="num">{{.Num}}</td>
     <td class="key">{{.Key}}</td>
-    <td>
-      <div class="target-row">
-        <form class="save" method="post" action="/_admin/links">
-          <input type="hidden" name="key" value="{{.Key}}">
-          <input type="url" name="target" value="{{.Target}}">
-          <input type="text" name="note" value="{{.Note}}" placeholder="note (optional)">
-          <button type="submit">Save</button>
-        </form>
-        <form class="del" method="post" action="/_admin/delete" onsubmit="return confirm('Delete go/{{.Key}}?')">
-          <input type="hidden" name="key" value="{{.Key}}">
-          <button class="danger" type="submit">Delete</button>
-        </form>
-        <a class="btn" href="/{{.Key}}">Open</a>
-      </div>
+    <td><input type="url" name="target" value="{{.Target}}" form="save-{{.Key}}"></td>
+    <td><input type="text" name="note" value="{{.Note}}" placeholder="note (optional)" form="save-{{.Key}}"></td>
+    <td class="actions">
+      <form id="save-{{.Key}}" method="post" action="/_admin/links"><input type="hidden" name="key" value="{{.Key}}"></form>
+      <form id="del-{{.Key}}" method="post" action="/_admin/delete" onsubmit="return confirm('Delete go/{{.Key}}?')"><input type="hidden" name="key" value="{{.Key}}"></form>
+      <button type="submit" form="save-{{.Key}}">Save</button>
+      <button class="danger" type="submit" form="del-{{.Key}}">Delete</button>
+      <a class="btn" href="/{{.Key}}">Open</a>
     </td>
   </tr>
   {{end}}

@@ -129,6 +129,7 @@ func TestAdminSavedToastIsFloatingAndAutoDismisses(t *testing.T) {
 		`class="toast saved"`, // the saved notice is a toast now
 		`class="close"`,       // manual close button
 		`position: fixed`,     // overlay positioning in CSS
+		`translateX(-50%)`,    // toast sits at top center, not in a corner
 		`}, 3000);`,           // success toast auto-dismisses after 3s
 	} {
 		if !strings.Contains(body, want) {
@@ -141,10 +142,15 @@ func TestAdminPageNumberingAndRowLayout(t *testing.T) {
 	s := testServer(t, map[string]string{"aaa": "https://a.example.com", "bbb": "https://b.example.com"})
 	rec := doReq(s, "GET", "/", nil)
 	body := rec.Body.String()
-	for _, want := range []string{`<td class="num">1</td>`, `<td class="num">2</td>`, `class="target-row"`} {
+	for _, want := range []string{`<td class="num">1</td>`, `<td class="num">2</td>`, `<th>Target</th>`, `<th>Note (optional)</th>`, `form="save-aaa"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("admin page missing %q", want)
 		}
+	}
+	// Target and Note are separate columns: the Note header must sit over
+	// the note column, i.e. after the Target header.
+	if ti, ni := strings.Index(body, "<th>Target</th>"), strings.Index(body, "<th>Note (optional)</th>"); !(ti >= 0 && ni > ti) {
+		t.Errorf("header order wrong: target=%d note=%d", ti, ni)
 	}
 	// In each row the controls must appear in Save, Delete, Open order.
 	saveIdx := strings.Index(body, ">Save<")
